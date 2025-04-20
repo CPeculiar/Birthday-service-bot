@@ -1,0 +1,45 @@
+name: Run Birthday Email Job
+
+on:
+  schedule:
+    - cron: "0 23 * * *"  # Runs daily at 11:00 PM UTC
+  workflow_dispatch:      # Allows manual trigger from GitHub UI
+
+jobs:
+  run-birthday-job:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call birthday job endpoint
+        run: |
+          echo "Starting request..."
+          attempt=1
+          max_attempts=3
+          delay_minutes=8
+          success=false
+
+          while [ $attempt -le $max_attempts ]; do
+            echo "Attempt $attempt..."
+            
+            http_status=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" --location-trusted --max-redirs 0 https://email-birthday-service.onrender.com/run-job)
+
+            if [ "$http_status" = "302" ] || [ "$http_status" -ge 200 -a "$http_status" -lt 300 ]; then
+              echo "Success! Got HTTP $http_status"
+              success=true
+              break
+            else
+              echo "Failed with status $http_status"
+            fi
+
+            if [ $attempt -lt $max_attempts ]; then
+              echo "Retrying in $delay_minutes minutes..."
+              sleep $((delay_minutes * 60))
+            fi
+
+            attempt=$((attempt + 1))
+          done
+
+          if [ "$success" = false ]; then
+            echo "Job failed after $max_attempts attempts"
+            exit 1
+          fi
